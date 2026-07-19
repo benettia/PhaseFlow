@@ -364,3 +364,85 @@ fn water_faucet_l1_and_order() {
         "observed order {order:.2} (cauchy {c1:.5} -> {c2:.5})"
     );
 }
+
+/// Timeline rollback: restoring a snapshot reproduces the identical
+/// continuation, so scrubbing back and resuming is not an approximation.
+/// Run in CFL mode on purpose — dt is itself a function of the state, so
+/// exactness must survive adaptive stepping too.
+#[test]
+fn snapshot_restore_is_exact() {
+    let mut sc = scenario(
+        vec![
+            Segment {
+                length: 40.0,
+                angle_deg: -4.0,
+                diameter: 0.08,
+                cells: 60,
+                init: Some(InitState {
+                    alpha_g: 0.6,
+                    p: 2.0e5,
+                    v: 0.0,
+                }),
+            },
+            Segment {
+                length: 10.0,
+                angle_deg: 90.0,
+                diameter: 0.08,
+                cells: 20,
+                init: Some(InitState {
+                    alpha_g: 0.05,
+                    p: 2.0e5,
+                    v: 0.0,
+                }),
+            },
+        ],
+        InitState::default(),
+    );
+    sc.inlet = Inlet {
+        wg: 0.003,
+        wl: 2.0,
+        p_anchor: None,
+        makeup_alpha: None,
+    };
+    sc.outlet = Outlet {
+        p: 1.0e5,
+        choke: 1.0,
+        cv: 0.6,
+    };
+    sc.options.regime_feedback = true;
+    sc.options.hydrostatic_init = true;
+
+    let mut sim = Sim::new(&sc).unwrap();
+    for _ in 0..300 {
+        sim.step().unwrap();
+    }
+    let snap = sim.save_state();
+    let (t_snap, steps_snap) = (sim.time(), sim.steps());
+    // original continuation
+    for _ in 0..200 {
+        sim.step().unwrap();
+    }
+    let (p_ref, a_ref, v_ref) = (sim.p().to_vec(), sim.alpha().to_vec(), sim.vg().to_vec());
+    let t_ref = sim.time();
+    // rewind and replay
+    sim.load_state(&snap, t_snap, steps_snap).unwrap();
+    for _ in 0..200 {
+        sim.step().unwrap();
+    }
+    assert_eq!(sim.time().to_bits(), t_ref.to_bits(), "time diverged");
+    assert!(sim
+        .p()
+        .iter()
+        .zip(&p_ref)
+        .all(|(x, y)| x.to_bits() == y.to_bits()));
+    assert!(sim
+        .alpha()
+        .iter()
+        .zip(&a_ref)
+        .all(|(x, y)| x.to_bits() == y.to_bits()));
+    assert!(sim
+        .vg()
+        .iter()
+        .zip(&v_ref)
+        .all(|(x, y)| x.to_bits() == y.to_bits()));
+}

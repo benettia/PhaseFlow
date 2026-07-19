@@ -37,10 +37,27 @@ def run_smoke() -> list[str]:
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(f"http://127.0.0.1:{port}/", wait_until="networkidle")
         page.wait_for_function("window.PHASEFLOW_READY === true", timeout=15000)
-        t0 = page.evaluate("document.getElementById('status').textContent")
+        t0 = float(page.text_content("#t-now"))
         page.wait_for_timeout(1500)
-        t1 = page.evaluate("document.getElementById('status').textContent")
-        assert t0 != t1, f"sim time did not advance: {t0!r}"
+        t1 = float(page.text_content("#t-now"))
+        assert t1 > t0, f"sim time did not advance: {t0} -> {t1}"
+
+        # timeline: scrub back, then resume and confirm the solver rewound
+        scrub = page.locator("#scrub")
+        last = int(scrub.get_attribute("max"))
+        assert last > 4, f"history too short to scrub: {last + 1} frames"
+        scrub.fill(str(last // 3))
+        scrub.dispatch_event("input")
+        page.wait_for_timeout(300)
+        t_rewound = float(page.text_content("#t-now"))
+        assert t_rewound < t1, f"scrubbing did not rewind: {t_rewound} vs {t1}"
+        assert "reviewing" in (page.get_attribute("body", "class") or "")
+        page.locator("#run").click()  # resume => roll the solver back
+        page.wait_for_timeout(1200)
+        t_resumed = float(page.text_content("#t-now"))
+        assert (
+            t_rewound < t_resumed < t1
+        ), f"resume did not continue from the rewound point: {t_rewound} -> {t_resumed} (was {t1})"
         # click through every preset and let each run briefly
         for btn in page.locator("button.preset").all():
             btn.click()

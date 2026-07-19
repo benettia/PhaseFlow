@@ -113,7 +113,8 @@ garbage is never rendered.
 | gas kick: migration, expansion, unloading | `analysis/gas_kick.py` | front accelerates 1.3 → 2.6 m/s as gas expands; column unloads to < 1 % liquid |
 | valve slam wave speed vs Wood a_m | `analysis/valve_slam.py` | 46.3 vs 44.5 m/s (4 %, on ~1 m/s counterflow) |
 | fixed-dt bit determinism | cargo | exact `f64::to_bits` equality run-to-run |
-| web boot smoke, all four presets | `analysis/smoke_web.py` | zero console errors, headless chromium |
+| timeline rollback exactness | cargo | restoring a snapshot reproduces the continuation bit-for-bit (under adaptive CFL) |
+| web boot smoke, timeline rollback, all four presets | `analysis/smoke_web.py` | zero console errors, headless chromium |
 
 Honest caveats, on the record:
 
@@ -130,21 +131,35 @@ Honest caveats, on the record:
 ## The panel
 
 - **Pipe view** — rendered along its true geometry, each cell filled by
-  regime: stratified draws the actual liquid level at the gravity-bottom,
-  slug flow draws Taylor-bubble/slug alternation advected at v_g, bubbly
-  stipples at density ∝ α, annular draws core + film. Stylized, but driven
-  by α and regime — never faked.
+  regime. Stratified runs are drawn as one continuous liquid body with a real
+  free surface that steps and ripples along the pipe; slug flow draws a
+  Taylor-bubble/slug train; bubbly stipples at density ∝ α; annular draws a
+  gas core inside a rippling wall film. Every pattern is phased on absolute
+  position along the pipe and advected by the local phase velocity, so
+  structures travel and stay continuous across cells. Stylized, but driven by
+  α and regime — never faked.
+- **Timeline** — the run is recorded frame by frame (conserved state plus
+  display fields, on a fixed memory budget). Scrub back and the pipe, both
+  strip charts and the regime map all move to that instant together. Press
+  run from a rewound point and the solver is **rolled back exactly** to it
+  (`Sim::load_state`, verified bit-identical by test) and continues from
+  there — so you can rewind to just before a slug, change the choke, and
+  replay the same instant down a different branch. ⏮ ◀ ▶ ⏭ , space to
+  run/pause, ←/→ to step frames (shift for ×10).
 - **Editor** — drag vertices to reshape the pipe; double-click a segment to
   split it; alt-click a vertex to delete it; diameter slider. Elevation
   profile is the whole game.
-- **Strip charts** — pressure and holdup at three probes: 10 % of length,
-  riser base (automatic: minimum elevation), 95 %.
-- **Taitel–Dukler map** — classified background with live per-cell dots
-  migrating as the transient evolves.
-- **Controls** — run/pause/single-step, sim speed (¼×–128×), gas/liquid
-  inflow, outlet pressure, choke opening, "slam valve" (closes the choke in
-  0.1 s), first/second-order toggle, regime-coupled slip toggle. The whole
-  scenario serializes to the URL hash.
+- **Strip charts** — pressure and holdup at three probes (10 % of length,
+  riser base = minimum elevation, 95 %), read straight from the recording so
+  they can never disagree with the pipe view, with a playhead marking the
+  instant on screen. Probe markers are drawn on the pipe and on the map in
+  matching colours.
+- **Taitel–Dukler map** — the classifier's own transition boundaries with
+  named regions, live per-cell dots migrating as the transient evolves.
+- **Controls** — sim speed (¼×–128×), gas/liquid inflow, outlet pressure,
+  choke opening, "slam valve" (closes the choke in 0.1 s), first/second-order
+  toggle, regime-coupled slip toggle. The whole scenario serializes to the
+  URL hash.
 - **Presets** — *water faucet* (verification), *gas kick* (bottom-injected
   gas migrates, expands, unloads the column), *severe slugging* (the
   flagship), *valve slam* (water-hammer at two-phase sound speed).

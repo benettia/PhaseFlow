@@ -49,6 +49,24 @@ impl WasmSim {
         self.sim.opts.muscl = on;
     }
 
+    /// Snapshot for the timeline: `[mg | ml | mom | regime]`, length 4n.
+    pub fn save_state(&self) -> js_sys::Float64Array {
+        js_sys::Float64Array::from(&self.sim.save_state()[..])
+    }
+
+    /// Roll back to a snapshot; the continuation is bit-identical to what
+    /// the original run would have produced.
+    pub fn load_state(&mut self, data: &[f64], time: f64, steps: f64) -> Result<(), JsError> {
+        if data.len() != 4 * self.sim.n {
+            return Err(JsError::new("snapshot does not match this geometry"));
+        }
+        self.sim.load_state(data, time, steps as u64).map_err(err)
+    }
+
+    pub fn steps(&self) -> f64 {
+        self.sim.steps() as f64
+    }
+
     pub fn refresh_regime(&mut self) {
         self.sim.update_regime();
     }

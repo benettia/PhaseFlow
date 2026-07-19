@@ -159,6 +159,41 @@ wrapper silently keeps the old physics. Always rebuild both.
 
 ## Changelog
 
+### 2026-07-20 — timeline rollback + visualization overhaul (Claude, with benettia)
+- What changed: solver gained `save_state`/`load_state` (flat
+  `[mg|ml|mom|regime]`, exposed through both wrappers) and a test proving a
+  restored snapshot reproduces the continuation bit-for-bit under adaptive
+  CFL. Web app rebuilt around a recorded tape (`web/src/history.js`): scrub
+  to rewind every view together, press run to roll the solver back to that
+  frame and branch. Renderer rewritten (shared-edge quads, continuous
+  stratified free surface, globally-phased advected patterns, per-segment
+  cylindrical shading, probe markers); charts now read from the tape with a
+  playhead; TD map got named regions; new `web/src/theme.js` holds the one
+  palette. Web smoke test now exercises the rollback.
+- Why / what was tried and rejected: the regime array **must** be part of the
+  snapshot — with `regime_feedback` on it is lagged state, not a function of
+  the masses — and so must `steps`, because the regime refresh runs on a step
+  cadence; without either, a restored run silently diverges. Four separate
+  causes of "barcode" striping down the pipe were fixed in order: (1) AA
+  seams between abutting quads → overlap them; (2) a *symmetric* overlap made
+  each cell repaint its neighbour's near end, punching gas slivers through
+  the liquid wherever holdup stepped → overlap forward only, since cells are
+  drawn in order; (3) art overhang was a fixed 1.5 px while the clip inflated
+  by 0.75·dpr, so at dpr = 3 the base colour showed through → scale the
+  overhang with dpr; (4) per-cell wave/bubble phases (`sin(... + 3*i)`) reset
+  at every boundary → phase everything on absolute pipe position. Also
+  removed the render loop's `refresh_regime()` call: with regime feedback on
+  it made the trajectory depend on frame rate.
+- Considerations for future agents: `drawStratified` runs **before** the
+  per-cell art and spills a few px past each end on purpose — mitered elbow
+  faces otherwise leave a wedge of the bent end cell uncovered; cells drawn
+  afterwards reclaim their own territory. If you add a regime whose art fills
+  the whole cell, check it against a neighbour with different holdup at
+  dpr = 3 before believing it is seam-free (`device_scale_factor=3` in a
+  playwright clip screenshot is how all four bugs above were caught —
+  none were visible at dpr = 1). The tape is memory-budgeted (~24 MB), so
+  frame count falls as cell count rises; don't assume a fixed window.
+
 ### 2026-07-19 — outlet backflow admission + gas-kick verification (Claude)
 - What changed: outlet BC now admits reservoir fluid through the choke when
   the last cell's flow reverses (smoothly gated: zero for v ≥ 0, full by

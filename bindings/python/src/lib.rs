@@ -114,6 +114,35 @@ impl Sim {
     fn mass_totals(&self) -> (f64, f64) {
         self.inner.mass_totals()
     }
+
+    /// Checkpoint: flat `[mg | ml | mom | regime]` array, length 4n.
+    fn save_state<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+        PyArray1::from_vec(py, self.inner.save_state())
+    }
+
+    /// Restore a checkpoint taken from an identical geometry; the
+    /// continuation reproduces the original trajectory exactly.
+    fn load_state(
+        &mut self,
+        data: numpy::PyReadonlyArray1<f64>,
+        time: f64,
+        steps: u64,
+    ) -> PyResult<()> {
+        let slice = data
+            .as_slice()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        if slice.len() != 4 * self.inner.n {
+            return Err(PyRuntimeError::new_err(
+                "snapshot does not match this geometry",
+            ));
+        }
+        self.inner.load_state(slice, time, steps).map_err(err)
+    }
+
+    #[getter]
+    fn steps(&self) -> u64 {
+        self.inner.steps()
+    }
 }
 
 /// Classify a flow point; returns the regime code 0..8.

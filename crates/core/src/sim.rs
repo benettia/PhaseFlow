@@ -279,6 +279,47 @@ impl Sim {
         self.choke = choke.clamp(0.0, 1.0);
     }
 
+    /// Flat snapshot of everything that evolves: `[mg | ml | mom | regime]`,
+    /// length 4n. The regime array is carried because with `regime_feedback`
+    /// on it is lagged state, not a pure function of the masses — omitting it
+    /// would make a restored run diverge from the original.
+    pub fn save_state(&self) -> Vec<f64> {
+        let mut v = Vec::with_capacity(4 * self.n);
+        v.extend_from_slice(&self.mg);
+        v.extend_from_slice(&self.ml);
+        v.extend_from_slice(&self.mom);
+        v.extend(self.regime.iter().map(|&r| r as f64));
+        v
+    }
+
+    /// Restore a snapshot taken from a `Sim` with identical geometry.
+    /// Rollback is exact: the solver is a pure function of (state, steps),
+    /// so resuming from a restored snapshot reproduces the trajectory the
+    /// original run would have taken (`steps` matters because the regime
+    /// refresh is on a fixed step cadence).
+    pub fn load_state(&mut self, data: &[f64], time: f64, steps: u64) -> Result<(), SimError> {
+        assert_eq!(data.len(), 4 * self.n, "snapshot length mismatch");
+        let n = self.n;
+        self.mg.copy_from_slice(&data[..n]);
+        self.ml.copy_from_slice(&data[n..2 * n]);
+        self.mom.copy_from_slice(&data[2 * n..3 * n]);
+        for i in 0..n {
+            self.regime[i] = data[3 * n + i] as u8;
+        }
+        self.time = time;
+        self.steps = steps;
+        self.dt_last = 0.0;
+        compute_prim(
+            &self.mg,
+            &self.ml,
+            &self.mom,
+            &self.sin_th,
+            &self.regime,
+            &self.opts,
+            &mut self.prim,
+        )
+    }
+
     fn cfl_dt(&self) -> f64 {
         let mut dt = f64::MAX;
         for i in 0..self.n {
