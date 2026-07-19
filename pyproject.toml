@@ -19,7 +19,7 @@ phase-flow = { path = "bindings/python" }
 
 [tool.pytest.ini_options]
 testpaths = ["analysis"]
-python_files = ["faucet.py", "shock_tube.py", "slugging.py", "valve_slam.py", "smoke_web.py"]
+python_files = ["faucet.py", "shock_tube.py", "slugging.py", "valve_slam.py", "gas_kick.py", "smoke_web.py"]
 
 [dependency-groups]
 dev = ["ruff>=0.8", "pre-commit>=4"]

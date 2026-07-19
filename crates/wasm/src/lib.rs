@@ -9,6 +9,9 @@ use wasm_bindgen::prelude::*;
 fn err(e: SimError) -> JsError {
     match e {
         SimError::NanAtCell(i) => JsError::new(&format!("NaN detected in cell {i}: sim stopped")),
+        SimError::BlowupAtCell(i) => {
+            JsError::new(&format!("unphysical velocity in cell {i}: sim stopped"))
+        }
         SimError::MaxSubsteps => JsError::new("exceeded max substeps in one advance() call"),
     }
 }

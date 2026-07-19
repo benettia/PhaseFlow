@@ -3,6 +3,8 @@ name = "phase-flow-py"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description.workspace = true
+repository.workspace = true
 
 [lib]
 name = "phase_flow"

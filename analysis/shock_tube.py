@@ -14,8 +14,10 @@ from common import OUT, isothermal_riemann, make_sim, riemann_profile, shock_tub
 PL, PR, N = 4e5, 1e5, 400
 
 
-def run():
-    sim = make_sim(shock_tube_scenario(N, PL, PR))
+def run(muscl: bool = True):
+    sc = shock_tube_scenario(N, PL, PR)
+    sc["options"]["muscl"] = muscl
+    sim = make_sim(sc)
     _, _, s_exact = isothermal_riemann(PL, PR)
     thresh = 0.5 * (PR + 1.99e5)
 
@@ -43,8 +45,10 @@ def test_shock_speed():
 
 if __name__ == "__main__":
     sim, s_sim, s_exact = run()
+    sim1, _, _ = run(muscl=False)
     fig, ax = plt.subplots(figsize=(9, 4))
-    ax.plot(sim.x, sim.p / 1e3, lw=1.1, label=f"AUSMV N={N}, t={sim.time:.3f}s")
+    ax.plot(sim.x, sim.p / 1e3, lw=1.1, label=f"MUSCL+MC N={N}, t={sim.time:.3f}s")
+    ax.plot(sim1.x, sim1.p / 1e3, lw=1.0, color="#a4442c", label="first order (same N)")
     ax.plot(sim.x, riemann_profile(sim.x, sim.time, PL, PR) / 1e3, "k--", lw=1, label="exact")
     ax.set(
         xlabel="x [m]",

@@ -47,6 +47,10 @@ jobs:
       # web/pkg is gitignored — the smoke test needs a freshly built wasm pkg
       - run: curl -sSfL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
       - run: wasm-pack build crates/wasm --target web --release --out-dir ../../web/pkg
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
       - run: uv run playwright install --with-deps chromium
       # full acceptance: faucet convergence, shock tube, severe-slugging
       # limit cycle (~40 s), valve slam, headless web smoke

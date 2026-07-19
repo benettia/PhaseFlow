@@ -3,6 +3,8 @@ resolver = "2"
 members = ["crates/core", "crates/scenario", "crates/wasm", "bindings/python"]
 
 [workspace.package]
+description = "Transient 1-D drift-flux multiphase pipe flow simulator"
+repository = "https://github.com/benettia/PhaseFlow"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"

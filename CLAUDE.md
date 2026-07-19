@@ -159,6 +159,30 @@ wrapper silently keeps the old physics. Always rebuild both.
 
 ## Changelog
 
+### 2026-07-19 — outlet backflow admission + gas-kick verification (Claude)
+- What changed: outlet BC now admits reservoir fluid through the choke when
+  the last cell's flow reverses (smoothly gated: zero for v ≥ 0, full by
+  v = −0.1·c); new `SimError::BlowupAtCell` velocity guard (|v| > 1e4 m/s
+  stops the sim naming the cell); new `analysis/gas_kick.py` verification
+  (migration, expansion-driven front acceleration 1.3 → 2.6 m/s, unloading);
+  shock-tube plot now overlays first-order vs MUSCL; crate metadata; CI
+  caches playwright browsers.
+- Why / what was tried and rejected: the gas-kick preset stalled at t ≈ 22 s
+  — after unloading, liquid falls back from the top cell, the ψ⁺-only outlet
+  admits nothing, the cell drains to vacuum (p → floor), and finite momentum
+  over floored mass gives v ~ 1e9 → dt ~ 1e-10 → MaxSubsteps hang.
+  *Ungated* ψ⁻ admission fixed the vacuum but injected reservoir mass during
+  ordinary subsonic outflow too (ψ⁻ ≠ 0 for all v < c) and dragged faucet
+  self-convergence to 0.79 — hence the reversal gate. Slugging re-validated
+  after the change: 145.4/144.9/145.4 s (was 144.4 ±0.1 %; ~1 s shift from
+  reservoir gas re-entry during fallback is real physics, not drift).
+- Considerations for future agents: any outlet-BC change must re-run BOTH
+  the faucet convergence AND the slugging cycle — they pull in opposite
+  directions (clean outflow vs reversal robustness). The gas-kick top cell
+  keeps a small α blip (outlet boundary layer, cosmetic); `front_position()`
+  in gas_kick.py deliberately measures the bottom-connected front to ignore
+  it.
+
 ### 2026-07-19 — ci fix: build wasm pkg before the web smoke (Claude)
 - What changed: the python CI job now installs the wasm32 target + wasm-pack
   and builds `web/pkg` before pytest; `smoke_web.py` fails fast with a clear

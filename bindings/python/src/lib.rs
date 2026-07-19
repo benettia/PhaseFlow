@@ -12,6 +12,9 @@ use phase_core::{classify, SimError};
 fn err(e: SimError) -> PyErr {
     match e {
         SimError::NanAtCell(i) => PyRuntimeError::new_err(format!("NaN detected in cell {i}")),
+        SimError::BlowupAtCell(i) => {
+            PyRuntimeError::new_err(format!("unphysical velocity in cell {i}"))
+        }
         SimError::MaxSubsteps => PyRuntimeError::new_err("exceeded max substeps"),
     }
 }

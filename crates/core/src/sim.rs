@@ -9,10 +9,12 @@ use crate::scenario::{Options, Scenario};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SimError {
     NanAtCell(usize),
+    BlowupAtCell(usize),
     MaxSubsteps,
 }
 
 const MASS_FLOOR: f64 = 1.0e-10;
+const V_MAX: f64 = 1.0e4; // [m/s] far beyond anything physical in a pipe
 const MAX_SUBSTEPS: usize = 200_000;
 const REGIME_EVERY: u64 = 16;
 
@@ -469,8 +471,22 @@ impl Sim {
                 self.flux[2][n] = pr.p[i];
             } else {
                 let c = pr.am[i];
-                let fg = mg[i] * psi_plus(pr.vg[i], c);
-                let fl = ml[i] * psi_plus(pr.vl[i], c);
+                // backflow admission: if the last cell pulls inward (v < 0),
+                // reservoir fluid at p_out enters through the choke (same
+                // void fraction as the cell — zeroth-order composition).
+                // Without this the top cell can drain to vacuum after an
+                // unloading event: p floors, velocities blow up, dt collapses.
+                // Gated smoothly on actual reversal (zero for v >= 0, full by
+                // v = -0.1c) so ordinary subsonic outflow — and every
+                // validated acceptance result — is untouched.
+                let (mg_res, ml_res) = (
+                    pr.alpha[i] * rho_gas(self.p_out),
+                    (1.0 - pr.alpha[i]) * rho_liq(self.p_out),
+                );
+                let adm_g = (-pr.vg[i] / (0.1 * c)).clamp(0.0, 1.0);
+                let adm_l = (-pr.vl[i] / (0.1 * c)).clamp(0.0, 1.0);
+                let fg = mg[i] * psi_plus(pr.vg[i], c) + adm_g * mg_res * psi_minus(pr.vg[i], c);
+                let fl = ml[i] * psi_plus(pr.vl[i], c) + adm_l * ml_res * psi_minus(pr.vl[i], c);
                 let gtot = fg + fl;
                 let rho_m = mg[i] + ml[i];
                 let open = self.cv * self.choke;
@@ -555,6 +571,12 @@ fn compute_prim(
         let am = wood_sound_speed(a, p);
         if !(p.is_finite() && vg.is_finite() && vl.is_finite() && am.is_finite() && am > 0.0) {
             return Err(SimError::NanAtCell(i));
+        }
+        // unphysical-velocity guard: catches vacuum-type blowups (finite but
+        // absurd v from floored mass + finite momentum) as a clean stop
+        // instead of a 200k-substep dt-collapse hang
+        if vg.abs() > V_MAX || vl.abs() > V_MAX {
+            return Err(SimError::BlowupAtCell(i));
         }
         out.p[i] = p;
         out.alpha[i] = a;

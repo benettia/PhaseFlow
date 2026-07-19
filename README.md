@@ -1,5 +1,8 @@
 # phase-flow
 
+[![ci](https://github.com/benettia/PhaseFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/benettia/PhaseFlow/actions/workflows/ci.yml)
+[![deploy](https://github.com/benettia/PhaseFlow/actions/workflows/deploy.yml/badge.svg)](https://github.com/benettia/PhaseFlow/actions/workflows/deploy.yml)
+
 **▶ Play with it live: [benettia.github.io/PhaseFlow](https://benettia.github.io/PhaseFlow/)**
 
 **A transient multiphase pipe flow simulator that runs live in the browser.**
@@ -106,7 +109,8 @@ garbage is never rendered.
 | Ransom water faucet vs analytic, t = 0.5 s | `analysis/faucet.py` + cargo | L1 = 0.064, self-convergence order 0.85 |
 | pure-gas shock tube vs exact isothermal Riemann | `analysis/shock_tube.py` + cargo | shock speed 445.0 vs 445.4 m/s (0.08 %) |
 | mass conservation, closed ends, 1000 steps | cargo | ≤ 1e-12 relative, each phase |
-| severe slugging limit cycle, unscripted | `analysis/slugging.py` | periods 144.4 / 144.4 / 144.4 s (±0.1 %), 94 kPa swing |
+| severe slugging limit cycle, unscripted | `analysis/slugging.py` | periods 145.4 / 144.9 / 145.4 s (±0.3 %), 91 kPa swing |
+| gas kick: migration, expansion, unloading | `analysis/gas_kick.py` | front accelerates 1.3 → 2.6 m/s as gas expands; column unloads to < 1 % liquid |
 | valve slam wave speed vs Wood a_m | `analysis/valve_slam.py` | 46.3 vs 44.5 m/s (4 %, on ~1 m/s counterflow) |
 | fixed-dt bit determinism | cargo | exact `f64::to_bits` equality run-to-run |
 | web boot smoke, all four presets | `analysis/smoke_web.py` | zero console errors, headless chromium |
