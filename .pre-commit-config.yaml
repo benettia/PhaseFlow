@@ -1,0 +1,38 @@
+# Install once: uv run pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: claude-md-reminder
+        name: CLAUDE.md changelog reminder
+        entry: >
+          bash -c 'if git diff --cached --name-only | grep -qE "\.(rs|js|py|html|toml)$"
+          && ! git diff --cached --name-only | grep -qx CLAUDE.md; then
+          echo ""; echo "⚠  Code changed but CLAUDE.md was not updated."
+          echo "   The changelog discipline (see CLAUDE.md) requires every PR to append"
+          echo "   an entry with what changed and considerations for future agents."
+          echo "   This is a reminder, not a block — CI will enforce it on the PR."; fi;
+          exit 0'
+        language: system
+        pass_filenames: false

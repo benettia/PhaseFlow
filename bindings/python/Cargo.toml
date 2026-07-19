@@ -1,0 +1,15 @@
+[package]
+name = "phase-flow-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "phase_flow"
+crate-type = ["cdylib"]
+
+[dependencies]
+phase-core = { path = "../../crates/core" }
+phase-scenario = { path = "../../crates/scenario" }
+pyo3 = { version = "0.25", features = ["extension-module", "abi3-py310"] }
+numpy = "0.25"

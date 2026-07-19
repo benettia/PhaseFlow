@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>phase-flow — transient multiphase pipe flow</title>
+<style>
+  :root {
+    --cream: #f4efe4; --ink: #1c1b18; --ink2: #6b665c;
+    --gas: #d9a441; --gas-pale: #ecd9a8; --liq: #1f4e79; --liq-deep: #16395c;
+    --line: #c9c2b2;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--cream); color: var(--ink);
+    font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 8px 14px; border-bottom: 1.5px solid var(--ink);
+  }
+  header h1 { font-size: 15px; letter-spacing: 3px; font-weight: 600; }
+  header h1 small { color: var(--ink2); letter-spacing: 0; font-weight: 400; }
+  .group { display: flex; align-items: center; gap: 6px; }
+  button {
+    font: inherit; color: var(--ink); background: transparent;
+    border: 1.2px solid var(--ink); border-radius: 2px;
+    padding: 3px 10px; cursor: pointer;
+  }
+  button:hover { background: #eae3d2; }
+  button.primary { background: var(--ink); color: var(--cream); }
+  button.preset.active { background: var(--ink); color: var(--cream); }
+  #status { margin-left: auto; color: var(--ink2); white-space: nowrap; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #left { flex: 1 1 68%; display: flex; flex-direction: column; min-width: 0; }
+  #pipe-wrap { flex: 1 1 58%; position: relative; min-height: 0; }
+  #charts-wrap { flex: 1 1 42%; display: flex; border-top: 1px solid var(--line); min-height: 0; }
+  #charts-wrap canvas { flex: 1; min-width: 0; }
+  #right {
+    flex: 0 0 320px; border-left: 1.5px solid var(--ink);
+    display: flex; flex-direction: column; overflow-y: auto;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  #tdmap { width: 100%; height: auto; aspect-ratio: 1.15; flex: none; }
+  #panel { padding: 10px 12px; display: flex; flex-direction: column; gap: 9px; border-top: 1px solid var(--line); }
+  .ctl { display: grid; grid-template-columns: 92px 1fr 62px; align-items: center; gap: 8px; }
+  .ctl label { color: var(--ink2); }
+  .ctl output { text-align: right; }
+  input[type=range] { appearance: none; height: 2px; background: var(--ink); outline: none; }
+  input[type=range]::-webkit-slider-thumb {
+    appearance: none; width: 11px; height: 11px; border-radius: 50%;
+    background: var(--cream); border: 1.6px solid var(--ink); cursor: ew-resize;
+  }
+  .toggles { display: flex; gap: 14px; flex-wrap: wrap; color: var(--ink2); }
+  .toggles label { cursor: pointer; }
+  #banner {
+    display: none; position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    background: #7a1f1f; color: #f4efe4; padding: 6px 14px; border-radius: 2px; z-index: 5;
+  }
+  #legend { padding: 6px 12px; color: var(--ink2); border-top: 1px solid var(--line); font-size: 11.5px; }
+  .sw { display: inline-block; width: 9px; height: 9px; margin: 0 3px 0 10px; vertical-align: -1px; border: 1px solid var(--ink2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>PHASE-FLOW <small>1-D drift-flux transient</small></h1>
+  <div class="group" id="presets"></div>
+  <div class="group">
+    <button id="run" class="primary">run</button>
+    <button id="stepbtn" title="one solver step">step</button>
+    <button id="slam" title="close choke in 0.1 s">slam valve</button>
+  </div>
+  <div class="ctl" style="width:230px">
+    <label>speed</label><input id="speed" type="range" min="-2" max="7" step="0.25" value="0"><output id="speed-out">1×</output>
+  </div>
+  <div id="status">t = 0.000 s</div>
+</header>
+<main>
+  <div id="left">
+    <div id="pipe-wrap">
+      <div id="banner"></div>
+      <canvas id="pipe"></canvas>
+    </div>
+    <div id="charts-wrap">
+      <canvas id="chart-p"></canvas>
+      <canvas id="chart-h"></canvas>
+    </div>
+  </div>
+  <div id="right">
+    <canvas id="tdmap"></canvas>
+    <div id="panel">
+      <div class="ctl"><label>gas in</label><input id="wg" type="range" min="0" max="1" step="0.001" value="0.3"><output id="wg-out"></output></div>
+      <div class="ctl"><label>liquid in</label><input id="wl" type="range" min="0" max="1" step="0.001" value="0.3"><output id="wl-out"></output></div>
+      <div class="ctl"><label>outlet p</label><input id="pout" type="range" min="0.5" max="10" step="0.1" value="1"><output id="pout-out"></output></div>
+      <div class="ctl"><label>choke</label><input id="choke" type="range" min="0" max="1" step="0.01" value="1"><output id="choke-out"></output></div>
+      <div class="ctl"><label>diameter</label><input id="diam" type="range" min="0.03" max="1" step="0.005" value="0.08"><output id="diam-out"></output></div>
+      <div class="toggles">
+        <label><input id="muscl" type="checkbox" checked> 2nd order (MUSCL)</label>
+        <label><input id="feedback" type="checkbox"> regime-coupled slip</label>
+      </div>
+      <div class="toggles" style="color:var(--ink2)">
+        drag vertices in the pipe view · double-click a segment to split it ·
+        alt-click a vertex to delete · scenario lives in the URL hash
+      </div>
+    </div>
+    <div id="legend">
+      <span class="sw" style="background:#9db4c8"></span>strat
+      <span class="sw" style="background:#7d9cb8"></span>wavy
+      <span class="sw" style="background:#5e7fa3"></span>slug
+      <span class="sw" style="background:#e0bd6f"></span>annular
+      <span class="sw" style="background:#37629c"></span>disp
+      <span class="sw" style="background:#4a6f9e"></span>bubbly
+      <span class="sw" style="background:#8a86c8"></span>churn
+    </div>
+  </div>
+</main>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
