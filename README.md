@@ -8,7 +8,7 @@ watch the system discover severe slugging by itself: the four-stage limit
 cycle (buildup → production → blowout → fallback) emerges from the equations,
 not from scripting.
 
-![panel](analysis/out/shot-severe-slugging.png)
+![panel](docs/panel-severe-slugging.png)
 
 The heavy math is Rust (compiled to WebAssembly for the browser and to a
 native extension for Python); the panel is plain ES modules + canvas; the
