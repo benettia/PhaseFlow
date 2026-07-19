@@ -37,11 +37,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: astral-sh/setup-uv@v5
       - run: uv sync
       - run: uv run ruff check analysis/
       - run: uv run ruff format --check analysis/
+      # web/pkg is gitignored — the smoke test needs a freshly built wasm pkg
+      - run: curl -sSfL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+      - run: wasm-pack build crates/wasm --target web --release --out-dir ../../web/pkg
       - run: uv run playwright install --with-deps chromium
       # full acceptance: faucet convergence, shock tube, severe-slugging
       # limit cycle (~40 s), valve slam, headless web smoke

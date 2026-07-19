@@ -1,5 +1,7 @@
 # phase-flow
 
+**▶ Play with it live: [benettia.github.io/PhaseFlow](https://benettia.github.io/PhaseFlow/)**
+
 **A transient multiphase pipe flow simulator that runs live in the browser.**
 Gas and liquid flow through a pipe you draw, solved by a real 1-D drift-flux
 model — the same class of model that OLGA and nuclear thermal-hydraulics codes

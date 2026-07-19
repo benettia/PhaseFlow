@@ -23,6 +23,10 @@ def serve(port: int):
 
 
 def run_smoke() -> list[str]:
+    assert os.path.exists(os.path.join(ROOT, "pkg", "phase_flow_wasm.js")), (
+        "web/pkg is missing (it is gitignored) — build it first: "
+        "wasm-pack build crates/wasm --target web --release --out-dir ../../web/pkg"
+    )
     httpd = serve(0)
     port = httpd.server_address[1]
     errors: list[str] = []

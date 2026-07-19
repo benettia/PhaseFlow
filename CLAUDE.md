@@ -159,6 +159,18 @@ wrapper silently keeps the old physics. Always rebuild both.
 
 ## Changelog
 
+### 2026-07-19 — ci fix: build wasm pkg before the web smoke (Claude)
+- What changed: the python CI job now installs the wasm32 target + wasm-pack
+  and builds `web/pkg` before pytest; `smoke_web.py` fails fast with a clear
+  message when the pkg is missing.
+- Why: first CI run on GitHub failed only in `test_web_boots` —
+  `web/pkg/` is gitignored, so a fresh checkout has no wasm module and the
+  page never sets `PHASEFLOW_READY`. Locally it passed because a stale local
+  build was present. Classic works-on-my-machine via ignored build output.
+- Considerations for future agents: anything that serves `web/` (CI job,
+  deploy, local demo) must build the pkg itself; never "fix" this by
+  committing `web/pkg/`.
+
 ### 2026-07-19 — tooling: pre-commit + CI/CD (Claude, with benettia)
 - What changed: `.pre-commit-config.yaml` (ruff check+format, rustfmt,
   whitespace/yaml/toml hygiene, a non-blocking CLAUDE.md reminder);
