@@ -9,12 +9,25 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+  # Ruff runs through uv so pre-commit and CI use the SAME ruff — the one
+  # pinned in uv.lock. A separately-versioned ruff-pre-commit hook drifts
+  # from the dev dependency and the two formatters then fight over the same
+  # files (0.8 and 0.15 wrap long assert messages differently), so every
+  # commit reformats and CI rejects it.
+  - repo: local
     hooks:
-      - id: ruff
-        args: [--fix]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
       - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
 
   - repo: local
     hooks:

@@ -22,7 +22,9 @@ testpaths = ["analysis"]
 python_files = ["faucet.py", "shock_tube.py", "slugging.py", "valve_slam.py", "gas_kick.py", "smoke_web.py"]
 
 [dependency-groups]
-dev = ["ruff>=0.8", "pre-commit>=4"]
+# ruff minor versions change formatting; pin the line so CI and
+# pre-commit (which runs this same ruff) never disagree
+dev = ["ruff>=0.15,<0.16", "pre-commit>=4"]
 
 [tool.ruff]
 line-length = 100

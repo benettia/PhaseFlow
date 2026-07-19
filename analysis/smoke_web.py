@@ -55,9 +55,9 @@ def run_smoke() -> list[str]:
         page.locator("#run").click()  # resume => roll the solver back
         page.wait_for_timeout(1200)
         t_resumed = float(page.text_content("#t-now"))
-        assert (
-            t_rewound < t_resumed < t1
-        ), f"resume did not continue from the rewound point: {t_rewound} -> {t_resumed} (was {t1})"
+        assert t_rewound < t_resumed < t1, (
+            f"resume did not continue from the rewound point: {t_rewound} -> {t_resumed} (was {t1})"
+        )
         # click through every preset and let each run briefly
         for btn in page.locator("button.preset").all():
             btn.click()

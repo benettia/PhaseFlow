@@ -159,6 +159,20 @@ wrapper silently keeps the old physics. Always rebuild both.
 
 ## Changelog
 
+### 2026-07-20 — one ruff, not two (Claude)
+- What changed: the `ruff-pre-commit` hook (pinned v0.8.4) was replaced by a
+  local hook running `uv run ruff`, and the dev dependency pinned to
+  `>=0.15,<0.16`.
+- Why: CI failed on `ruff format --check` for a file pre-commit had just
+  "fixed". Two ruffs were installed — pre-commit's pinned 0.8.4 and uv.lock's
+  0.15.22 — and they wrap long `assert` messages differently, so each undid
+  the other on every commit. Version skew between a linter's pre-commit pin
+  and its project dependency is silent until CI disagrees with your machine.
+- Considerations for future agents: keep formatters single-sourced. If you
+  bump ruff, bump the pyproject pin — there is no separate hook rev to
+  forget, which is the point. `uv run pre-commit run --all-files` before
+  pushing is the cheap way to confirm CI will agree.
+
 ### 2026-07-20 — timeline rollback + visualization overhaul (Claude, with benettia)
 - What changed: solver gained `save_state`/`load_state` (flat
   `[mg|ml|mom|regime]`, exposed through both wrappers) and a test proving a
