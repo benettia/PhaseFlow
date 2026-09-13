@@ -5,17 +5,20 @@
 import { REGIME_COLORS, REGIME_SHORT as SHORT, T, rgba, setFont } from "./theme.js";
 
 export class TDMap {
-  constructor(canvas, classifyPoint) {
+  constructor(canvas) {
     this.cv = canvas;
     this.ctx = canvas.getContext("2d");
-    this.classify = classifyPoint;
     this.jg = [-2, 1.7]; // log10 m/s
     this.jl = [-2.3, 1];
     this.bgKey = "";
   }
 
-  buildBackground(d, p) {
-    const key = `${d.toFixed(4)}|${(p / 1e4).toFixed(0)}`;
+  /// The background is classified with the *sim's own* fluid, so the map can
+  /// never show air-water transitions over a gas-condensate run. Rebuilt only
+  /// when the key changes: it is ~7000 bisections.
+  buildBackground(sim, d, p, t) {
+    const f = sim.fluid();
+    const key = `${d.toFixed(4)}|${(p / 1e4).toFixed(0)}|${t.toFixed(0)}|${f.gasMw}|${f.liqRho}|${f.sigma}`;
     if (key === this.bgKey) return;
     this.bgKey = key;
     const W = 96;
@@ -28,7 +31,7 @@ export class TDMap {
       for (let ix = 0; ix < W; ix++) {
         const jg = 10 ** (this.jg[0] + (ix / (W - 1)) * (this.jg[1] - this.jg[0]));
         const jl = 10 ** (this.jl[1] - (iy / (H - 1)) * (this.jl[1] - this.jl[0]));
-        const r = this.classify(jg, jl, d, 0, 1, p);
+        const r = sim.classify_point(jg, jl, d, 0, 1, p, t);
         codes[iy * W + ix] = r;
         const c = REGIME_COLORS[r] || "#999";
         const k = 4 * (iy * W + ix);
@@ -58,7 +61,7 @@ export class TDMap {
       .map(([r, a]) => ({ r, fx: a.x / a.n / W, fy: a.y / a.n / H }));
   }
 
-  draw(view, diameter) {
+  draw(view, diameter, sim) {
     const { ctx, cv } = this;
     const dpr = devicePixelRatio;
     const w = cv.width;
@@ -77,7 +80,13 @@ export class TDMap {
     ctx.fillStyle = T.ink;
     ctx.fillText("Taitel–Dukler map", 8 * dpr, 13 * dpr);
 
-    if (diameter) this.buildBackground(diameter, 2e5);
+    if (diameter && sim && view) {
+      // classify at the line's own mean state, not a hardcoded 2 bar — at
+      // 40 bar the transitions sit somewhere entirely different
+      const pm = 0.5 * (view.report.pMin + view.report.pMax);
+      const tm = 0.5 * (view.report.tMin + view.report.tMax);
+      this.buildBackground(sim, diameter, pm, tm);
+    }
     if (this.bg) {
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(this.bg, L, TOP, pw, ph);

@@ -96,7 +96,16 @@ wrapper silently keeps the old physics. Always rebuild both.
 6. **CFL default is 0.5, not 0.9.** Heun + AUSMV at CFL 0.9 is marginally
    dispersive at shocks: 3.7 % shock-speed error, vs 0.08 % at 0.5. Measured,
    not folklore (the acceptance test will catch a regression).
-7. **The physics must stay emergent.** Severe slugging comes from the
+7. **Fluid properties live in `Fluid`, never in the solver.** If you find
+   yourself writing a density, viscosity, surface tension or heat capacity
+   literal outside `fluid.rs`, it belongs in `Fluid`. Roughness is a *pipe*
+   property (`Options::roughness` / `Segment::roughness`), not a fluid one.
+8. **Boundary fluxes must recombine to the physical flux.** An AUSMV face
+   needs both halves: `m_L ψ⁺(v_L,c) + m_R ψ⁻(v_R,c)`. At a boundary the
+   exterior state is yours to choose, but dropping the ψ⁻ half is not a
+   choice — it scales the flux by ~c/4v. (This was a real bug; see the
+   2026-09-13 entry.)
+9. **The physics must stay emergent.** Severe slugging comes from the
    stratified-C0 regime feedback, never from scripting. If a preset needs a
    hack to look right, the model is wrong — fix the model or document the
    limitation honestly.
@@ -158,6 +167,95 @@ wrapper silently keeps the old physics. Always rebuild both.
 ---
 
 ## Changelog
+
+### 2026-09-13 — fluid properties, the energy equation, and a real outlet BC (Claude)
+- What changed: three things that had to move together.
+  (1) **Fluid properties are data**, not constants: new `crates/core/src/fluid.rs`
+  holds a `Fluid` (`gas_mw`, `gas_z`, viscosities, heat capacities, liquid
+  density/sound speed/thermal expansion, surface tension) with three named
+  pairs — `air-water`, `gas-oil`, `gas-condensate` — and per-property JSON
+  overrides. Roughness moved out of the fluid onto the pipe (`Options::roughness`,
+  per-segment override), where it belongs. The EOS is now p–T for both phases.
+  (2) **Optional energy equation** (`options.thermal`, default off): a fourth
+  conserved field, mixture *internal* energy, with wall heat transfer
+  (`u_wall` [W/m²K], per-segment), feed temperature, frictional dissipation
+  and p dV work. Snapshots are 5n now, not 4n.
+  (3) **The outlet boundary flux was wrong** and is fixed — see below.
+  Plus `Sim::report()` (pressure-drop split, inventory, boundary rates,
+  API RP 14E erosional check), exposed through both wrappers; a rebuilt web
+  panel; `analysis/thermal.py`.
+- Why / what was tried and rejected:
+  * **Internal energy, not total energy.** Temperature must be recoverable
+    *before* velocity, because density needs T and the velocity solve needs
+    density. `T = T_ref + e/Σ m_k c_v,k` is explicit and keeps the pressure
+    inversion the same closed-form quadratic (T enters only through two
+    coefficients). Total energy would need kinetic energy → velocities → a
+    fixed-point iteration whose count depends on convergence, which invariant
+    3 forbids. The price is that `p div(j)` is a source, not a flux, so the
+    thermal field is not shock-capturing to machine accuracy. Stated, not hidden.
+  * **The outlet over-discharged by ~c/4 per unit mass.** AUSMV needs an
+    exterior state at the boundary face; the old code kept `m·ψ⁺(v,c)` and
+    multiplied the ψ⁻ half by the backflow-admission gate, so during ordinary
+    forward outflow the ψ⁻ half vanished entirely and the flux was ~m·c/4
+    instead of m·v. The last cell absorbed this by drawing in gas until its
+    own Wood speed fell far enough to balance — which is exactly the "small α
+    blip in the top cell (outlet boundary layer, cosmetic)" the 2026-07-19
+    entry recorded as cosmetic. It was not cosmetic. Fix: blend the *exterior*
+    state (interior for v ≥ 0, reservoir by v = −0.1c) and use it in the ψ⁻
+    half, so outflow recombines to exactly m·v and reversal still admits
+    reservoir fluid. Measured on a steady single-phase line: before, the outlet
+    cell sat at α = 0.35 with vl = −1.3 m/s and p 210 kPa *below* the
+    reservoir; after, ΔP closes to 0.9 % of Darcy–Weisbach (the residual is
+    the one-cell offset between cell centres) and inlet mass rate equals
+    outlet mass rate exactly.
+  * **Air is not 316 m/s.** The old gas EOS used a round a_g = 316 m/s, which
+    is air at 74 °C. The default is now air at 15 °C: a_g = √(R_s T) = 287.6 m/s,
+    i.e. 21 % denser gas at the same pressure. Water likewise moved from
+    a_l = 1000 to the real 1480 m/s.
+  * Faucet inlet variants (gg from vl[0], from j[0], and a fixed feed rate)
+    were all measured and all rejected — none of them fixes the inlet layer,
+    because the layer is the drift-flux model itself (see below).
+- Numbers that moved, and why:
+  * Severe slugging period **145 s → 165 s** (consecutive periods within 0.4 %,
+    swing unchanged at 91 kPa). Denser gas ⇒ the same injected gas *mass* is
+    less volume ⇒ the buildup phase is longer. Direction is right; the cycle
+    is as crisp as before.
+  * Gas-kick front position windows widened for the same reason (21 % less
+    injected volume at the same mass rate); the acceleration ratio and the
+    unloading assertions were untouched and still pass.
+  * Faucet: L1 vs analytic **0.0654 → 0.0623** (closer to the truth) while the
+    full-domain Cauchy order went 0.809 → 0.793. Attributed by experiment to
+    the outlet fix alone; the *interior* order is unchanged (0.804 → 0.800).
+    The cargo test now measures the interior order (trims 2 cells each end),
+    matching what analysis/faucet.py already did with its x > 0.75 m mask.
+  * Wood single-phase liquid limit tolerance 1 % → 2 %: α is clamped at
+    ALPHA_EPS = 1e-6 and Wood's formula is sensitive enough that this trace of
+    gas is worth 1.1 % of the sound speed. Physics, not slack.
+- Considerations for future agents:
+  * **Fluid properties are read back, never restated.** `analysis/common.py`
+    gets A_G and RHO_L0 from `pf.fluid_properties("air-water")`. If you change
+    a property, the verification cases follow automatically — do not paste
+    numbers into a test.
+  * **The energy equation is off by default on purpose.** The shock tube is
+    posed against the *isothermal* Riemann solution, and the faucet against
+    Ransom's isothermal analytic profile; both would be comparing against the
+    wrong exact solution with thermal on. `thermal_off_holds_reference_temperature`
+    asserts bit-exact T = T_ref so a thermal term can never leak into that path.
+  * `Fluid::a_gas2(t, thermal)` returns the *adiabatic* γR_sT when the energy
+    equation is on and the isothermal R_sT when it is off — the gas really
+    does support different acoustics in the two models. The EOS density always
+    uses R_sT; only the sound speed takes γ.
+  * **The faucet inlet layer is the model, not the BC.** Measured: cells 0–1
+    sit at α ≈ 0.55 against an analytic 0.21, and the cell pressure sags to
+    ~36 kPa. Cause: the slip law drags gas along at C0·j ≈ 1.18j, so the void
+    the falling column opens cannot be filled by gas at rest the way Ransom's
+    two-fluid solution does; the gas must expand instead, and p drops. Three
+    make-up laws were tried (gas flux from vl[0], from j[0], and a fixed feed
+    rate): all three leave α ≈ 0.55–0.62 at the inlet. The fixed-rate one
+    converges best (order 0.90) and is the *least* accurate (L1 0.125). Do not
+    spend another day here without changing the slip law.
+  * Anything touching the outlet still has to re-run BOTH the faucet
+    convergence and the slugging cycle — that has not changed.
 
 ### 2026-07-20 — one ruff, not two (Claude)
 - What changed: the `ruff-pre-commit` hook (pinned v0.8.4) was replaced by a

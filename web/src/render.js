@@ -314,7 +314,7 @@ export class PipeView {
   drawCell(ctx, ds, width, view, i, dpr, sPix) {
     const a = view.alpha[i];
     const reg = view.regime[i];
-    const t = view.t;
+    const t = view.time;
     const vg = view.vg[i];
     const hold = 1 - a;
     const L = ds / 2 + 2 * dpr; // must exceed the clip inflation (0.75·dpr)
@@ -441,7 +441,7 @@ export class PipeView {
           const amp = Math.min(2.4 * dpr, hold * width * 0.3);
           const k = (2 * Math.PI) / Math.max(16 * dpr, width * 1.8);
           const sPix = this.faceS[f] * this.scale;
-          const drift = view.vg[cell] * view.t * this.scale;
+          const drift = view.vg[cell] * view.time * this.scale;
           y += amp * Math.sin(k * (sPix - drift));
         }
         const [sx, sy] = endShift(f);

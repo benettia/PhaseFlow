@@ -32,7 +32,7 @@ def run_smoke() -> list[str]:
     errors: list[str] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        page = browser.new_page()
+        page = browser.new_page(accept_downloads=True, viewport={"width": 1500, "height": 940})
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(f"http://127.0.0.1:{port}/", wait_until="networkidle")
@@ -58,10 +58,47 @@ def run_smoke() -> list[str]:
         assert t_rewound < t_resumed < t1, (
             f"resume did not continue from the rewound point: {t_rewound} -> {t_resumed} (was {t1})"
         )
+        # every analysis tab must draw something (a blank canvas means the
+        # view threw and the error was swallowed by requestAnimationFrame)
+        for view in ("trends", "map", "profiles"):
+            page.locator(f"#tabs button[data-view={view}]").click()
+            page.wait_for_timeout(400)
+            assert page.evaluate(
+                "() => { const c = document.querySelector('.view.on canvas');"
+                " return c.width > 50 && c.height > 50; }"
+            ), f"{view} canvas has no size"
+
         # click through every preset and let each run briefly
         for btn in page.locator("button.preset").all():
             btn.click()
             page.wait_for_timeout(900)
+
+        # design report must carry real numbers, not placeholders
+        page.locator("button.preset", has_text="severe slugging").first.click()
+        page.wait_for_timeout(1200)
+        for field in ("ro-liq", "ro-holdup", "ro-ero", "ro-amin"):
+            txt = page.text_content(f"#{field}")
+            assert txt and txt != "—", f"report field {field} never filled: {txt!r}"
+
+        # switching fluid rebuilds the sim with the new properties
+        page.select_option("#fluid", "gas-oil")
+        page.wait_for_timeout(700)
+        assert "850" in page.text_content("#fluid-props"), "fluid properties did not update"
+
+        # the energy equation can be switched on live, and adds its panel
+        page.check("#thermal")
+        page.wait_for_timeout(900)
+        assert page.text_content("#ro-trange").strip() not in ("", "—"), "no temperature readout"
+
+        # CSV export produces a real download
+        with page.expect_download() as dl:
+            page.locator("#export").click()
+        path = dl.value.path()
+        with open(path) as fh:
+            head, first = fh.readline(), fh.readline()
+        assert head.startswith("x_m,elevation_m"), f"unexpected CSV header {head!r}"
+        assert len(first.split(",")) == 10, f"unexpected CSV row {first!r}"
+
         banner = page.evaluate("document.getElementById('banner').style.display")
         assert banner in ("", "none"), "error banner is showing"
         page.screenshot(path=os.path.join(os.path.dirname(__file__), "out", "web.png"))

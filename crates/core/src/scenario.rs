@@ -1,11 +1,18 @@
 //! Scenario description: plain structs, no serde here (core stays zero-dep).
 //! JSON parsing lives in crates/scenario, shared by the wasm and python wrappers.
 
+use crate::fluid::Fluid;
+
+/// Default absolute wall roughness [m] — commercial steel.
+pub const DEFAULT_ROUGHNESS: f64 = 4.6e-5;
+
 #[derive(Clone, Copy, Debug)]
 pub struct InitState {
     pub alpha_g: f64,
     pub p: f64,
     pub v: f64, // initial common phase velocity [m/s]
+    /// Initial temperature [K]. `None` uses the fluid reference temperature.
+    pub t: Option<f64>,
 }
 
 impl Default for InitState {
@@ -14,6 +21,7 @@ impl Default for InitState {
             alpha_g: 0.5,
             p: 1.0e5,
             v: 0.0,
+            t: None,
         }
     }
 }
@@ -25,6 +33,13 @@ pub struct Segment {
     pub diameter: f64,  // [m]
     pub cells: usize,
     pub init: Option<InitState>, // override of Scenario::init
+    /// Absolute wall roughness [m]; `None` takes `Options::roughness`.
+    pub roughness: Option<f64>,
+    /// Overall heat transfer coefficient to ambient [W/(m2 K)], referred to
+    /// the inside pipe surface. `None` takes `Options::u_wall`. This is the
+    /// one number that separates a buried line (~2), an insulated one (~5)
+    /// and a bare subsea one (~200).
+    pub u_wall: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -40,6 +55,9 @@ pub struct Inlet {
     /// holding this void fraction at the feed. This is how an open faucet
     /// top behaves: air replaces the liquid that falls away.
     pub makeup_alpha: Option<f64>,
+    /// Temperature of the incoming feed [K]. `None` uses the fluid reference
+    /// temperature.
+    pub t: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -58,6 +76,17 @@ pub struct Options {
     pub g: f64,
     pub regime_feedback: bool, // regime modulates C0/v_d (default off)
     pub hydrostatic_init: bool,
+    /// Solve the mixture energy equation. Off = strictly isothermal at the
+    /// fluid reference temperature, which is what the exact-solution
+    /// verification cases (shock tube, faucet) are posed against.
+    pub thermal: bool,
+    /// Ambient temperature outside the pipe [K]. `None` uses the fluid
+    /// reference temperature.
+    pub t_ambient: Option<f64>,
+    /// Default overall heat transfer coefficient [W/(m2 K)]; 0 = adiabatic.
+    pub u_wall: f64,
+    /// Default absolute wall roughness [m].
+    pub roughness: f64,
 }
 
 impl Default for Options {
@@ -70,6 +99,10 @@ impl Default for Options {
             g: 9.81,
             regime_feedback: false,
             hydrostatic_init: false,
+            thermal: false,
+            t_ambient: None,
+            u_wall: 0.0,
+            roughness: DEFAULT_ROUGHNESS,
         }
     }
 }
@@ -81,4 +114,5 @@ pub struct Scenario {
     pub inlet: Inlet,
     pub outlet: Outlet,
     pub options: Options,
+    pub fluid: Fluid,
 }

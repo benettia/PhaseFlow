@@ -1,5 +1,5 @@
 //! ASCII waterfall of void fraction along the pipe over time.
-use phase_core::{InitState, Inlet, Options, Outlet, Scenario, Segment, Sim};
+use phase_core::{Fluid, InitState, Inlet, Options, Outlet, Scenario, Segment, Sim};
 
 fn main() {
     let args: Vec<f64> = std::env::args()
@@ -20,7 +20,10 @@ fn main() {
                     alpha_g: 0.6,
                     p: 2.0e5,
                     v: 0.0,
+                    t: None,
                 }),
+                roughness: None,
+                u_wall: None,
             },
             Segment {
                 length: 12.0,
@@ -31,7 +34,10 @@ fn main() {
                     alpha_g: 0.03,
                     p: 2.0e5,
                     v: 0.0,
+                    t: None,
                 }),
+                roughness: None,
+                u_wall: None,
             },
         ],
         init: InitState::default(),
@@ -40,6 +46,7 @@ fn main() {
             wl,
             p_anchor: None,
             makeup_alpha: None,
+            t: None,
         },
         outlet: Outlet {
             p: 1.0e5,
@@ -51,6 +58,7 @@ fn main() {
             regime_feedback: true,
             ..Default::default()
         },
+        fluid: Fluid::air_water(),
     };
     let mut sim = Sim::new(&sc).unwrap();
     let glyph = |a: f64| -> char {

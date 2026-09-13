@@ -55,30 +55,51 @@ Zero runtime deps in the web app; Playwright (via uv) is the one browser dev-dep
 
 ## The model
 
-Isothermal drift-flux. Three conserved fields per cell, `U = [m_g, m_l, I]`
-(phase masses and mixture momentum):
+Drift-flux. Three conserved fields per cell, plus a fourth when the energy
+equation is switched on — `U = [m_g, m_l, I, e]` (phase masses, mixture
+momentum, mixture internal energy):
 
 ```
 ∂t(α_g ρ_g) + ∂x(α_g ρ_g v_g)                     = 0
 ∂t(α_l ρ_l) + ∂x(α_l ρ_l v_l)                     = 0
 ∂t(I)       + ∂x(α_g ρ_g v_g² + α_l ρ_l v_l² + p) = −ρ_m g sinθ − F_w
+∂t(e)       + ∂x(Σ m_k v_k h_k)                   = j ∂x p + F_w v_m + 4U/D (T_a − T)
 ```
 
 Closures:
 
-- **EOS** — gas `ρ_g = p/a_g²` (a_g = 316 m/s); liquid weakly compressible,
-  `ρ_l = ρ_l0 + (p − p0)/a_l²` (a_l = 1000 m/s). Isothermal by design.
-- **Primitive recovery** — p from (m_g, m_l) is a closed-form quadratic
-  (exact for this EOS pair) plus two fixed Newton polish iterations. Isolated
-  in `eos::pressure_from_masses`, round-trip tested — this is where NaNs
-  would breed, so it is fenced.
+- **Fluid properties are data, not constants** (`fluid::Fluid`): molar mass and
+  Z for the gas, density / sound speed / thermal expansion for the liquid,
+  both viscosities, both heat capacities, surface tension. Three named pairs
+  ship — `air-water` (15 °C), `gas-oil` (40 °C), `gas-condensate` (60 °C) —
+  and any single property can be overridden in the scenario JSON. Wall
+  roughness is a *pipe* property and lives on the segment.
+- **EOS** — gas `ρ_g = p/(Z R_s T)`; liquid weakly compressible and thermally
+  expanding, `ρ_l = ρ_l,ref(1 − β ΔT) + (p − p_ref)/a_l²`. Two honest
+  limitations: Z is constant, so the gas is enthalpy-ideal and there is **no
+  Joule–Thomson cooling** (expansion cooling comes from the p dV work term,
+  which is the dominant effect in a blowdown); and there is no mass transfer
+  between the phases — no flashing, no condensation.
+- **Energy** — *internal* energy, not total. Temperature has to be recoverable
+  before the velocities are (density needs T, and the velocity solve needs
+  density), and `T = T_ref + e/Σ m_k c_v,k` is explicit, which keeps the
+  pressure inversion a closed-form quadratic and the iteration counts fixed.
+  The cost is that `p div(j)` appears as a source rather than inside the flux,
+  so the thermal field is not shock-capturing to machine accuracy. Off by
+  default: the exact-solution verification cases are posed isothermally.
+- **Primitive recovery** — p from (m_g, m_l, T) is a closed-form quadratic
+  (exact for this EOS pair — temperature only moves two coefficients) plus two
+  fixed Newton polish iterations. Isolated in `eos::pressure_from_masses`,
+  round-trip tested across three fluids × five pressures × four temperatures ×
+  six void fractions — this is where NaNs would breed, so it is fenced.
 - **Slip law** (this closes the system) — Zuber–Findlay `v_g = C0·j + v_d`
   with `C0 = 1 + 0.2(1−α²)²`: ≈1.2 in bubbly/slug, → 1.0 as α_g → 1 *fast
   enough* that the single-phase limits are exact (the exponent matters — see
   CLAUDE.md). `v_d` is Harmathy rise velocity scaled by sinθ buoyancy and
   damped by (1−α).
 - **Wall friction** — Darcy–Weisbach on the mixture with Churchill f(Re):
-  laminar → turbulent in one formula, no branching.
+  laminar → turbulent in one formula, no branching. Verified against the
+  textbook result in the single-phase limit (`report_dp_split_closes`).
 - **Flow-regime classifier** (`regime.rs`, pure, closed-form + one bisection)
   — near-horizontal: Taitel–Dukler 1976 mechanistic transitions from the
   equilibrium stratified level + Kelvin–Helmholtz criterion (stratified
@@ -106,15 +127,19 @@ garbage is never rendered.
 
 | test | where | result |
 | --- | --- | --- |
-| Ransom water faucet vs analytic, t = 0.5 s | `analysis/faucet.py` + cargo | L1 = 0.064, self-convergence order 0.85 |
-| pure-gas shock tube vs exact isothermal Riemann | `analysis/shock_tube.py` + cargo | shock speed 445.0 vs 445.4 m/s (0.08 %) |
+| Ransom water faucet vs analytic, t = 0.5 s | `analysis/faucet.py` + cargo | L1 = 0.062, interior self-convergence order 0.80 |
+| pure-gas shock tube vs exact isothermal Riemann | `analysis/shock_tube.py` + cargo | shock speed within 1 % of exact |
 | mass conservation, closed ends, 1000 steps | cargo | ≤ 1e-12 relative, each phase |
-| severe slugging limit cycle, unscripted | `analysis/slugging.py` | periods 145.4 / 144.9 / 145.4 s (±0.3 %), 91 kPa swing |
-| gas kick: migration, expansion, unloading | `analysis/gas_kick.py` | front accelerates 1.3 → 2.6 m/s as gas expands; column unloads to < 1 % liquid |
-| valve slam wave speed vs Wood a_m | `analysis/valve_slam.py` | 46.3 vs 44.5 m/s (4 %, on ~1 m/s counterflow) |
+| **steady ΔP split vs Darcy–Weisbach and ρgL** | cargo | friction within 5 %, static column within 2 %, acceleration term < 5 % |
+| **wall heat transfer vs lumped exponential** | `analysis/thermal.py` + cargo | max error 0.000 % of the span |
+| **frictional heating vs Δp/(ρ c_p)** | `analysis/thermal.py` | 0.1758 K vs 0.1765 K exact (0.4 %) |
+| **blowdown cooling vs the isentrope** | `analysis/thermal.py` + cargo | 70 → 1 bar, 29 → −130 °C against −135 °C isentropic (never colder) |
+| severe slugging limit cycle, unscripted | `analysis/slugging.py` | periods 165.0 / 165.6 s (±0.4 %), 91 kPa swing |
+| gas kick: migration, expansion, unloading | `analysis/gas_kick.py` | front accelerates 1.05 → 1.50 m/s as gas expands; column unloads to < 1 % liquid |
+| valve slam wave speed vs Wood a_m | `analysis/valve_slam.py` | within 15 % of the Wood mixture speed |
 | fixed-dt bit determinism | cargo | exact `f64::to_bits` equality run-to-run |
-| timeline rollback exactness | cargo | restoring a snapshot reproduces the continuation bit-for-bit (under adaptive CFL) |
-| web boot smoke, timeline rollback, all four presets | `analysis/smoke_web.py` | zero console errors, headless chromium |
+| timeline rollback exactness | cargo | restoring a snapshot (energy field included) reproduces the continuation bit-for-bit under adaptive CFL |
+| web boot, tabs, fluid switch, thermal toggle, CSV, rollback, all six presets | `analysis/smoke_web.py` | zero console errors, headless chromium |
 
 Honest caveats, on the record:
 
@@ -127,6 +152,11 @@ Honest caveats, on the record:
 - **Determinism is per build target.** Same URL hash → bit-identical
   trajectory in fixed-dt mode on a given build; native vs wasm differ in the
   last ulp through libm (`ln`, `powf`).
+- **No Joule–Thomson, no mass transfer.** A constant-Z gas has zero JT
+  coefficient by construction, so throttling across the choke is isothermal in
+  this model; blowdown cooling is real (p dV work) but the pipe wall's own
+  thermal mass is not modelled, so early cooling rates are an upper bound.
+  The phases never exchange mass.
 
 ## The panel
 
@@ -156,13 +186,30 @@ Honest caveats, on the record:
   matching colours.
 - **Taitel–Dukler map** — the classifier's own transition boundaries with
   named regions, live per-cell dots migrating as the transient evolves.
-- **Controls** — sim speed (¼×–128×), gas/liquid inflow, outlet pressure,
-  choke opening, "slam valve" (closes the choke in 0.1 s), first/second-order
-  toggle, regime-coupled slip toggle. The whole scenario serializes to the
-  URL hash.
+- **Profiles** — pressure, liquid holdup, phase velocities and (with the
+  energy equation on) temperature, stacked on one shared distance axis with
+  segment boundaries marked and a hover cursor that reads every panel at once.
+  This is the view you size a line from.
+- **Design report** — the pressure drop split into friction / elevation /
+  acceleration with a stacked bar, liquid and gas inventory, mean holdup,
+  boundary mass rates with a steady/unsteady flag, the API RP 14E erosional
+  velocity ratio, the minimum mixture sound speed (which sets the surge
+  pressure), and the pressure and temperature ranges. Read straight from
+  `Sim::report()`, so it is the same arithmetic the tests assert on, and it
+  follows the playhead when you scrub.
+- **Controls** — fluid pair and its properties, the energy equation with feed
+  and ambient temperature and a wall U-value, sim speed (¼×–128×), gas/liquid
+  inflow, outlet pressure, choke opening, diameter, roughness, "slam valve"
+  (closes the choke in 0.1 s), "run to steady" (runs fast until inventory and
+  boundary rates stop moving), CSV export of the current profile, and the
+  first/second-order and regime-coupled-slip toggles. The whole scenario
+  serializes to the URL hash.
 - **Presets** — *water faucet* (verification), *gas kick* (bottom-injected
   gas migrates, expands, unloads the column), *severe slugging* (the
-  flagship), *valve slam* (water-hammer at two-phase sound speed).
+  flagship), *valve slam* (water-hammer at two-phase sound speed), *wet gas
+  line* (1.8 km buried export line over rolling terrain, condensate in the
+  dips, gas cooling toward ground temperature), *blowdown* (insulated gas
+  line venting, the transient that sets minimum design metal temperature).
 
 Aesthetic: engineering instrument. Cream ground, ink lines, one accent per
 phase — pale amber gas, deep blue liquid.

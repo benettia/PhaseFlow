@@ -9,7 +9,12 @@ import phase_flow as pf
 OUT = os.path.join(os.path.dirname(__file__), "out")
 os.makedirs(OUT, exist_ok=True)
 
-A_G = 316.0
+# Reference fluid pair for the verification cases. Properties are the
+# solver's own, read back rather than restated here, so a property change
+# cannot silently desynchronise a test from the model it is testing.
+AIR_WATER = pf.fluid_properties("air-water")
+A_G = AIR_WATER["a_gas_isothermal"]  # isothermal gas sound speed [m/s]
+RHO_L0 = AIR_WATER["liq_rho"]  # liquid density at (p_ref, t_ref) [kg/m3]
 
 
 def make_sim(scenario: dict) -> pf.Sim:
@@ -21,7 +26,9 @@ def faucet_scenario(cells: int, fixed_dt: float | None = None) -> dict:
     return {
         "segments": [{"length": 12, "angle": -90, "diameter": 1.0, "cells": cells}],
         "init": {"alpha_g": 0.2, "p": 1e5, "v": 10},
-        "inlet": {"wg": 0.0, "wl": 0.8 * 1000 * 10 * area, "p_anchor": 1e5, "makeup_alpha": 0.2},
+        # the feed rate is quoted from the fluid's own density so the inlet
+        # liquid velocity is exactly the analytic v0 = 10 m/s
+        "inlet": {"wg": 0.0, "wl": 0.8 * RHO_L0 * 10 * area, "p_anchor": 1e5, "makeup_alpha": 0.2},
         "outlet": {"p": 1e5, "choke": 1.0, "cv": 20},
         "options": {"wall_friction": False, "fixed_dt": fixed_dt},
     }

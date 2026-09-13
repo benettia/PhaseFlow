@@ -19,7 +19,15 @@ phase-flow = { path = "bindings/python" }
 
 [tool.pytest.ini_options]
 testpaths = ["analysis"]
-python_files = ["faucet.py", "shock_tube.py", "slugging.py", "valve_slam.py", "gas_kick.py", "smoke_web.py"]
+python_files = [
+    "faucet.py",
+    "shock_tube.py",
+    "slugging.py",
+    "valve_slam.py",
+    "gas_kick.py",
+    "thermal.py",
+    "smoke_web.py",
+]
 
 [dependency-groups]
 # ruff minor versions change formatting; pin the line so CI and

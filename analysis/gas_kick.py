@@ -73,15 +73,18 @@ def test_gas_kick():
     def at(t):
         return int(np.searchsorted(ts, t))
 
-    # migration: front rises through the column at a finite, plausible rate
+    # migration: front rises through the column at a finite, plausible rate.
+    # The windows widened when the gas became real air (isothermal a_g =
+    # 287.6 m/s, not a round 316): at the same *mass* injection rate a 21 %
+    # denser gas is 21 % less volume, so the front is correspondingly slower.
     assert 4.0 < fronts[at(6)] < 12.0, f"front at t=6: {fronts[at(6)]:.1f} m"
-    assert 18.0 < fronts[at(14)] < 29.0, f"front at t=14: {fronts[at(14)]:.1f} m"
+    assert 14.0 < fronts[at(14)] < 26.0, f"front at t=14: {fronts[at(14)]:.1f} m"
     # expansion accelerates the front as it rises into lower pressure
     v_early = (fronts[at(6)] - fronts[at(2)]) / 4.0
     v_late = (fronts[at(14)] - fronts[at(10)]) / 4.0
     assert v_late > 1.2 * v_early, f"front speed {v_early:.2f} -> {v_late:.2f} m/s"
-    # expansion: mean gas density drops hard during the migration
-    assert rho[at(18)] < 0.6 * rho[at(4)], f"rho_gas {rho[at(4)]:.2f} -> {rho[at(18)]:.2f}"
+    # expansion: mean gas density drops hard over the migration
+    assert rho[at(25)] < 0.5 * rho[at(4)], f"rho_gas {rho[at(4)]:.2f} -> {rho[at(25)]:.2f}"
     # unloading: the column is evacuated
     assert liq[at(60) - 1] < 0.1, f"liquid fraction at t=60: {liq[at(60) - 1]:.3f}"
 

@@ -4,7 +4,6 @@
 //! Steep pipes (|sin theta| > 0.6): void-fraction thresholds
 //! bubbly -> slug -> churn -> annular.
 
-use crate::closures::{MU_G, MU_L};
 use crate::eos::ALPHA_EPS;
 
 pub const PI: f64 = std::f64::consts::PI;
@@ -81,20 +80,44 @@ fn dpdx_superficial(rho: f64, j: f64, d: f64, mu: f64) -> f64 {
     f * rho * j * j / (2.0 * d)
 }
 
-/// Classify one cell. alpha is the void fraction, jg/jl the phase superficial
-/// velocities [m/s], d diameter [m], sin_th/cos_th pipe inclination.
-#[allow(clippy::too_many_arguments)]
-pub fn classify(
-    alpha: f64,
-    jg: f64,
-    jl: f64,
-    d: f64,
-    sin_th: f64,
-    cos_th: f64,
-    rho_g: f64,
-    rho_l: f64,
-    g: f64,
-) -> Regime {
+/// Everything the classifier needs about one point in the flow. Bundled so
+/// that adding a property (viscosities came this way) does not ripple through
+/// every call site.
+#[derive(Clone, Copy, Debug)]
+pub struct FlowPoint {
+    /// Void fraction [-].
+    pub alpha: f64,
+    /// Gas superficial velocity [m/s].
+    pub jg: f64,
+    /// Liquid superficial velocity [m/s].
+    pub jl: f64,
+    /// Pipe diameter [m].
+    pub d: f64,
+    pub sin_th: f64,
+    pub cos_th: f64,
+    pub rho_g: f64,
+    pub rho_l: f64,
+    pub mu_g: f64,
+    pub mu_l: f64,
+    /// Gravity [m/s2].
+    pub g: f64,
+}
+
+/// Classify one cell.
+pub fn classify(pt: &FlowPoint) -> Regime {
+    let FlowPoint {
+        alpha,
+        jg,
+        jl,
+        d,
+        sin_th,
+        cos_th,
+        rho_g,
+        rho_l,
+        mu_g,
+        mu_l,
+        g,
+    } = *pt;
     if alpha <= 100.0 * ALPHA_EPS {
         return Regime::SingleLiquid;
     }
@@ -116,8 +139,8 @@ pub fn classify(
     let jg = jg.abs().max(1.0e-6);
     let jl = jl.abs().max(1.0e-6);
     let cos_th = cos_th.abs().max(0.1);
-    let dpg = dpdx_superficial(rho_g, jg, d, MU_G);
-    let dpl = dpdx_superficial(rho_l, jl, d, MU_L);
+    let dpg = dpdx_superficial(rho_g, jg, d, mu_g);
+    let dpl = dpdx_superficial(rho_l, jl, d, mu_l);
     let x2 = dpl / dpg;
     let drho = (rho_l - rho_g).max(1.0);
     let y = -drho * g * sin_th / dpg; // TD's Y, positive downhill
@@ -132,7 +155,7 @@ pub fn classify(
     let kh_unstable = f2 * ug * ug * si / (c2 * c2 * ag_t) >= 1.0;
     if !kh_unstable {
         // stratified: smooth vs wavy via the K criterion (s = 0.01)
-        let re_sl = rho_l * jl * d / MU_L;
+        let re_sl = rho_l * jl * d / mu_l;
         let k2 = f2 * re_sl;
         let s: f64 = 0.01;
         let wavy = k2 >= (2.0 / (ug * ul.sqrt() * s.sqrt())).powi(2);

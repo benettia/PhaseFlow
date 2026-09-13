@@ -1,30 +1,21 @@
-//! Isothermal equations of state and the per-cell primitive recovery.
-//! Gas: rho_g = p / a_g^2. Liquid: rho_l = rho_l0 + (p - p0) / a_l^2.
-//! Recovery of p from (m_g, m_l) closes alpha_g + alpha_l = 1; for this EOS
-//! pair the constraint is exactly a quadratic in p, solved in closed form and
-//! polished with two fixed Newton iterations (fixed count: deterministic).
+//! Primitive recovery: (m_g, m_l, T) -> p, and the mixture sound speed.
+//!
+//! With both densities linear-in-p at fixed T, the closure alpha_g + alpha_l = 1
+//! is exactly a quadratic in p — solved in closed form, then polished with two
+//! fixed Newton iterations (fixed count: deterministic). Temperature enters
+//! only through the two coefficients, so adding the energy equation cost the
+//! inversion nothing.
 
-pub const A_G: f64 = 316.0; // gas isothermal sound speed [m/s]
-pub const A_L: f64 = 1000.0; // liquid sound speed [m/s]
-pub const RHO_L0: f64 = 1000.0; // liquid ref density [kg/m3]
-pub const P0: f64 = 1.0e5; // ref pressure [Pa]
+use crate::fluid::Fluid;
+
 pub const P_MIN: f64 = 1.0e2; // pressure floor [Pa]
 pub const ALPHA_EPS: f64 = 1.0e-6; // void fraction clamp
 
-pub fn rho_gas(p: f64) -> f64 {
-    p / (A_G * A_G)
-}
-
-pub fn rho_liq(p: f64) -> f64 {
-    RHO_L0 + (p - P0) / (A_L * A_L)
-}
-
-/// Solve m_g/rho_g(p) + m_l/rho_l(p) = 1 for p > 0.
-pub fn pressure_from_masses(mg: f64, ml: f64) -> f64 {
-    let ag2 = A_G * A_G;
-    let al2 = A_L * A_L;
-    let c = RHO_L0 - P0 / al2; // rho_l = c + p/al2
-    let a = mg.max(0.0) * ag2;
+/// Solve `m_g/rho_g(p,T) + m_l/rho_l(p,T) = 1` for p > 0.
+pub fn pressure_from_masses(mg: f64, ml: f64, t: f64, f: &Fluid) -> f64 {
+    let al2 = f.liq_a * f.liq_a;
+    let c = f.liq_c(t); // rho_l = c + p/al2
+    let a = mg.max(0.0) * f.r_gas() * t; // alpha_g = a/p
     let ml = ml.max(0.0);
     // a/p + ml/(c + p/al2) = 1  =>  p^2/al2 + (c - a/al2 - ml) p - a*c = 0
     let b = c - a / al2 - ml;
@@ -36,10 +27,10 @@ pub fn pressure_from_masses(mg: f64, ml: f64) -> f64 {
     // Newton polish, exactly two iterations
     for _ in 0..2 {
         let rl = c + p / al2;
-        let f = a / p + ml / rl - 1.0;
+        let fv = a / p + ml / rl - 1.0;
         let df = -a / (p * p) - ml / (al2 * rl * rl);
         if df != 0.0 {
-            p -= f / df;
+            p -= fv / df;
         }
         if p.is_nan() || p < P_MIN {
             p = P_MIN;
@@ -48,12 +39,21 @@ pub fn pressure_from_masses(mg: f64, ml: f64) -> f64 {
     p
 }
 
-/// Wood's two-phase sound speed: dips hard at intermediate void fraction.
-pub fn wood_sound_speed(alpha: f64, p: f64) -> f64 {
+/// Wood's two-phase sound speed: dips hard at intermediate void fraction
+/// (~20 m/s for air-water at 1 bar, far below either pure phase). `thermal`
+/// selects the adiabatic gas sound speed — see `Fluid::a_gas2`.
+pub fn wood_sound_speed(alpha: f64, p: f64, t: f64, f: &Fluid, thermal: bool) -> f64 {
     let a = alpha.clamp(ALPHA_EPS, 1.0 - ALPHA_EPS);
-    let rg = rho_gas(p);
-    let rl = rho_liq(p);
+    let rg = f.rho_gas(p, t);
+    let rl = f.rho_liq(p, t);
+    let ag2 = f.a_gas2(t, thermal);
+    let al2 = f.liq_a * f.liq_a;
     let rho_m = a * rg + (1.0 - a) * rl;
-    let inv = rho_m * (a / (rg * A_G * A_G) + (1.0 - a) / (rl * A_L * A_L));
+    let inv = rho_m * (a / (rg * ag2) + (1.0 - a) / (rl * al2));
     (1.0 / inv).sqrt()
+}
+
+/// Mixture density at a given state [kg/m3].
+pub fn rho_mix(alpha: f64, p: f64, t: f64, f: &Fluid) -> f64 {
+    alpha * f.rho_gas(p, t) + (1.0 - alpha) * f.rho_liq(p, t)
 }

@@ -1,9 +1,7 @@
 //! Slip law, wall friction, and the AUSMV splitting functions.
-
-pub const SIGMA: f64 = 0.072; // surface tension [N/m]
-pub const MU_G: f64 = 1.8e-5; // gas viscosity [Pa s]
-pub const MU_L: f64 = 1.0e-3; // liquid viscosity [Pa s]
-pub const ROUGHNESS: f64 = 4.6e-5; // pipe wall roughness [m]
+//!
+//! Fluid properties are arguments, not constants: the caller owns a `Fluid`
+//! (see `crate::fluid`) and the closures never assume air and water.
 
 /// Zuber-Findlay profile parameter: ~1.2 in bubbly/slug, -> 1.0 as alpha -> 1.
 /// The form 1 + 0.2(1 - a^2)^2 keeps 1 - C0*a > 0 on (0,1) (no singular
@@ -17,9 +15,9 @@ pub fn c0(alpha: f64) -> f64 {
 /// Drift velocity: Harmathy bubble rise scaled by along-axis buoyancy
 /// (sin theta) and damped to zero as alpha_g -> 1 so the single-phase gas
 /// limit is exact. (The alpha_g -> 0 limit is exact regardless: no gas mass.)
-pub fn drift_velocity(alpha: f64, rho_g: f64, rho_l: f64, sin_th: f64, g: f64) -> f64 {
+pub fn drift_velocity(alpha: f64, rho_g: f64, rho_l: f64, sin_th: f64, g: f64, sigma: f64) -> f64 {
     let drho = (rho_l - rho_g).max(0.0);
-    let vh = 1.53 * (g.abs() * SIGMA * drho / (rho_l * rho_l)).powf(0.25);
+    let vh = 1.53 * (g.abs() * sigma * drho / (rho_l * rho_l)).powf(0.25);
     vh * (1.0 - alpha) * sin_th
 }
 
@@ -44,9 +42,9 @@ pub fn churchill_f(re: f64, rel_rough: f64) -> f64 {
 }
 
 /// Wall friction momentum source [Pa/m], Darcy-Weisbach on the mixture.
-pub fn wall_friction(rho_m: f64, vm: f64, d: f64, mu_m: f64) -> f64 {
+pub fn wall_friction(rho_m: f64, vm: f64, d: f64, mu_m: f64, roughness: f64) -> f64 {
     let re = rho_m * vm.abs() * d / mu_m;
-    let f = churchill_f(re, ROUGHNESS / d);
+    let f = churchill_f(re, roughness / d);
     -f * rho_m * vm * vm.abs() / (2.0 * d)
 }
 
